@@ -1,0 +1,49 @@
+from .base_model import BaseModel
+from . import networks3D
+from .pix2pix3d_model import Pix2Pix3dModel
+from torch.autograd import Variable
+
+
+class Pix2Pix3dConditionTestModel(BaseModel):
+    def name(self):
+        return 'Pix2Pix3dConditionTestModel'
+
+    @staticmethod
+    def modify_commandline_options(parser, is_train=True):
+        assert not is_train, 'TestModel cannot be used in train mode'
+        parser = Pix2Pix3dModel.modify_commandline_options(parser, is_train=False)
+        parser.set_defaults(dataset_mode='single')
+
+        parser.add_argument('--model_suffix', type=str, default='',
+                            help='In checkpoints_dir, [which_epoch]_net_G_A[model_suffix].pth will'
+                            ' be loaded as the generator of TestModel')
+
+        return parser
+
+    def initialize(self, opt):
+        assert(not opt.isTrain)
+        BaseModel.initialize(self, opt)
+
+        # specify the training losses you want to print out. The program will call base_model.get_current_losses
+        self.loss_names = []
+        # specify the images you want to save/display. The program will call base_model.get_current_visuals
+        self.visual_names = ['real_A', 'fake_B']
+        # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
+        self.model_names = ['G_A' + opt.model_suffix]
+
+        self.netG_A = networks3D.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG,
+                                      opt.norm, not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+
+        # assigns the model to self.netG_[suffix] so that it can be loaded
+        # please see BaseModel.load_networks
+        setattr(self, 'netG_A' + opt.model_suffix, self.netG_A)
+
+    def set_input(self, input, condition):
+        self.input_A = input.clone().to(self.device)
+        self.condition = condition
+        # self.input_A.resize_(input_A.size()).copy_(input_A).to(self.device)
+        # self.input_B.resize_(input_B.size()).copy_(input_B).to(self.device)
+
+    def forward(self):
+        self.real_A = Variable(self.input_A).to(self.device)
+        self.fake_B = self.netG_A.forward(self.real_A, self.condition)
